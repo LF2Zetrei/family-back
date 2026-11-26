@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: ${DATASOURCE_NAME}
+      POSTGRES_USER: ${DATASOURCE_USERNAME}
+      POSTGRES_PASSWORD: ${DATASOURCE_PASSWORD}
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # $$ = evaluated inside the container, not by compose
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  family-api:
+    build: .
+    image: family-api:latest
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  tests:
+    # Built on the "builder" stage: it has Maven + sources, the final image doesn't.
+    build:
+      context: .
+      target: builder
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["mvn", "test", "-B"]
+    profiles: ["test"]
+
+volumes:
+  pgdata:
